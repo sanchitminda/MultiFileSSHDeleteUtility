@@ -295,9 +295,14 @@ class FileManagerApp:
         if not self.sftp:
             messagebox.showerror("Error", "Not connected to server.")
             return
+
+        # Hide the main window
+        self.root.withdraw()
+
         self.selection = self.file_listbox.get(self.file_listbox.curselection())
         self.curr_dir = self.current_path + '/' + self.selection[6:] if self.selection.startswith("[DIR] ") else ''
         print(self.curr_dir)
+
         def list_all_files_recursive(remote_path):
             try:
                 files = []
@@ -331,9 +336,13 @@ class FileManagerApp:
 
         def play_music():
             try:
-                selected_file = file_listbox.get(file_listbox.curselection())
+                selected_file = highlighted_item = file_listbox.get(tk.ACTIVE)
                 local_file = os.path.join(self.temp_directory, os.path.basename(selected_file))
                 self.sftp.get(selected_file, local_file)
+
+                if self.playback_mode.get() == "windows":
+                    os.startfile(local_file)
+                    return
 
                 def update_slider():
                     if pygame.mixer.music.get_busy():
@@ -351,10 +360,6 @@ class FileManagerApp:
                     pygame.mixer.music.stop()
                     pygame.mixer.music.play(loops=-1, start=pos)
 
-                def play_with_windows_media_player():
-                    os.startfile(local_file)
-                    music_popup.destroy()
-
                 pygame.mixer.init()
                 pygame.mixer.music.load(local_file)
                 pygame.mixer.music.play(loops=-1)  # Loop indefinitely
@@ -368,20 +373,6 @@ class FileManagerApp:
                 music_slider.pack(pady=10)
 
                 tk.Button(music_popup, text="Stop", command=stop_music).pack(pady=5)
-
-                toggle_frame = tk.Frame(music_popup)
-                toggle_frame.pack(pady=5)
-
-                tk.Label(toggle_frame, text="Playback Mode:").pack(side=tk.LEFT, padx=5)
-                playback_mode = tk.StringVar(value="in_app")
-
-                def switch_playback_mode():
-                    if playback_mode.get() == "in_app":
-                        stop_music()
-                        play_with_windows_media_player()
-
-                tk.Radiobutton(toggle_frame, text="In-App", variable=playback_mode, value="in_app").pack(side=tk.LEFT)
-                tk.Radiobutton(toggle_frame, text="Windows Media Player", variable=playback_mode, value="windows", command=switch_playback_mode).pack(side=tk.LEFT)
 
                 update_slider()
             except Exception as e:
@@ -408,9 +399,13 @@ class FileManagerApp:
         tk.Button(button_frame, text="Play Music", command=play_music).pack(side=tk.LEFT, padx=5, pady=5)
         tk.Button(button_frame, text="Delete Selected Files", command=delete_selected_files).pack(side=tk.LEFT, padx=5, pady=5)
         populate_file_list(self.curr_dir)
-        # selected_directory = simpledialog.askstring("Select Directory", "Enter the remote directory path:")
-        # if selected_directory:
-        #     populate_file_list(selected_directory)
+
+        # Restore the main window when the directory window is closed
+        def on_close():
+            dir_window.destroy()
+            self.root.deiconify()
+
+        dir_window.protocol("WM_DELETE_WINDOW", on_close)
 
         # Set Temp Directory functionality
         def set_temp_directory():
@@ -421,9 +416,107 @@ class FileManagerApp:
                 messagebox.showinfo("Success", f"Temporary directory set to: {self.temp_directory}")
             else:
                 logging.warning("No directory selected for temporary files.")
+        
+        self.dir_menu = tk.Menu(dir_window)
+        dir_window.config(menu=self.dir_menu)
+
 
         # Add a menu option to set the temporary directory
-        self.menu.add_command(label="Set Temp Directory", command=set_temp_directory)
+        self.dir_menu.add_command(label="Set Temp Directory", command=set_temp_directory)
+
+        # Add Playback Mode configuration to the menu               
+        self.playback_mode = tk.StringVar(value="in_app")
+
+        def set_playback_mode():
+            mode_window = tk.Toplevel(self.root)
+            mode_window.title("Set Playback Mode")
+
+            tk.Label(mode_window, text="Select Playback Mode:").pack(pady=10)
+
+            def save_mode():
+                selected_mode = playback_mode_var.get()
+                self.playback_mode.set(selected_mode)
+                logging.info("Playback mode set to: %s", selected_mode)
+                messagebox.showinfo("Success", f"Playback mode set to: {selected_mode}")
+                mode_window.destroy()
+
+            playback_mode_var = tk.StringVar(value=self.playback_mode.get())
+
+            tk.Radiobutton(mode_window, text="In-App", variable=playback_mode_var, value="in_app").pack(anchor="w", padx=20)
+            tk.Radiobutton(mode_window, text="Windows Media Player", variable=playback_mode_var, value="windows").pack(anchor="w", padx=20)
+
+            tk.Button(mode_window, text="Save", command=save_mode).pack(pady=10)
+
+        self.dir_menu.add_command(label="Set Playback Mode", command=set_playback_mode)
+
+        # def play_selected_song(event):
+        #     try:
+        #         # selected_index = file_listbox.curselection()
+        #         highlighted_item = file_listbox.get(tk.ACTIVE)
+        #         if not highlighted_item:
+        #             messagebox.showerror("Error", "No file selected.")
+        #             return
+
+        #         # Get the single selected file
+        #         # selected_file = file_listbox.get(selected_index)
+                
+        #         print("Highlighted item:", highlighted_item)
+        #         local_file = os.path.join(self.temp_directory, os.path.basename(highlighted_item))
+        #         self.sftp.get(highlighted_item, local_file)
+
+        #         def update_slider():
+        #             if pygame.mixer.music.get_busy():
+        #                 current_pos = pygame.mixer.music.get_pos() / 1000
+        #                 if abs(music_slider.get() - current_pos) > 1:  # Avoid frequent resets
+        #                     music_slider.set(current_pos)
+        #                 music_popup.after(1000, update_slider)
+
+        #         def stop_music():
+        #             pygame.mixer.music.stop()
+        #             music_popup.destroy()
+
+        #         def set_music_position(event):
+        #             pos = music_slider.get()
+        #             pygame.mixer.music.stop()
+        #             pygame.mixer.music.play(loops=-1, start=pos)
+
+        #         def play_with_windows_media_player():
+        #             os.startfile(local_file)
+        #             music_popup.destroy()
+
+        #         pygame.mixer.init()
+        #         pygame.mixer.music.load(local_file)
+        #         pygame.mixer.music.play(loops=-1)  # Loop indefinitely
+
+        #         music_popup = tk.Toplevel(dir_window)
+        #         music_popup.title("Music Player")
+
+        #         music_length = pygame.mixer.Sound(local_file).get_length()
+        #         music_slider = tk.Scale(music_popup, from_=0, to=music_length, orient=tk.HORIZONTAL, length=300)
+        #         music_slider.bind("<ButtonRelease-1>", set_music_position)
+        #         music_slider.pack(pady=10)
+
+        #         tk.Button(music_popup, text="Stop", command=stop_music).pack(pady=5)
+
+        #         toggle_frame = tk.Frame(music_popup)
+        #         toggle_frame.pack(pady=5)
+
+        #         tk.Label(toggle_frame, text="Playback Mode:").pack(side=tk.LEFT, padx=5)
+        #         playback_mode = tk.StringVar(value="in_app")
+
+        #         def switch_playback_mode():
+        #             if playback_mode.get() == "in_app":
+        #                 stop_music()
+        #                 play_with_windows_media_player()
+
+        #         tk.Radiobutton(toggle_frame, text="In-App", variable=playback_mode, value="in_app").pack(side=tk.LEFT)
+        #         tk.Radiobutton(toggle_frame, text="Windows Media Player", variable=playback_mode, value="windows", command=switch_playback_mode).pack(side=tk.LEFT)
+
+        #         update_slider()
+        #     except Exception as e:
+        #         messagebox.showerror("Error", str(e))
+
+        file_listbox.bind('<Double-1>', play_selected_song)
 
 # Ensure the main loop is running
 if __name__ == "__main__":
